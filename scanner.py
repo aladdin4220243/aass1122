@@ -1,3 +1,4 @@
+
 import smtplib
 import dns.resolver
 import socket
@@ -10,19 +11,12 @@ import os
 import random
 import pickle
 from pathlib import Path
-import shutil # Added for file operations
-import shlex # Added for quoting paths in shell commands
-from google.colab import files # Added for upload and download
-import subprocess # Added for robust shell command execution
-
-# Install necessary libraries (included here as per request)
-
 
 # ============================================
 # الإعدادات
 # ============================================
-MAX_WORKERS = 10000
-BATCH_SIZE = 100000
+MAX_WORKERS = 1000
+BATCH_SIZE = 50000
 SOCKET_TIMEOUT = 5
 REQUEST_DELAY = 0.05
 
@@ -99,7 +93,7 @@ class GmailVerifier:
 
         txt_files = []
         for file in os.listdir(self.disabled_folder):
-            if file.endswith('.txt'): # Ensure we only read .txt files
+            if file.endswith('.txt'):
                 file_path = os.path.join(self.disabled_folder, file)
                 txt_files.append(file_path)
 
@@ -346,7 +340,7 @@ class GmailVerifier:
 
     def show_final_stats(self):
         """عرض الإحصائيات النهائية"""
-        elapsed = self.stats['end_time'] - self.stats['start_time'] if 'end_time' in self.stats and self.stats['end_time'] else 0
+        elapsed = self.stats['end_time'] - self.stats['start_time'] if self.stats['end_time'] else 0
 
         print("\n" + "="*70)
         print("🏆 النتائج النهائية")
@@ -405,10 +399,11 @@ class GmailVerifier:
 
         print(f"\n📄 التقرير: {report_file}")
 
-# ============================================n# التنفيذ (Combined Workflow)
+# ============================================
+# التنفيذ
 # ============================================
 
-def main_workflow():
+def main():
     print("\n" + "="*80)
     print("🔥 GMAIL VERIFIER - فحص جميع ملفات مجلد disabled")
     print("="*80)
@@ -416,94 +411,18 @@ def main_workflow():
     print("📂 النتائج: live | new_disabled | invalid")
     print("="*80)
 
-    # 1. Setup target directory for uploads
-    target_upload_dir = "/content/orgenal folder/disabled/"
-    !mkdir -p "{target_upload_dir}"
-    print(f"\nCreated target upload directory: {target_upload_dir}")
-
-    # 2. Upload files
-    print("\nPlease select the files you wish to upload (e.g., your .txt account files and any .zip files):")
-    uploaded = files.upload()
-
-    uploaded_zip_files = []
-    for filename in uploaded.keys():
-        source_path = os.path.join("/content/", filename)
-        destination_path = os.path.join(target_upload_dir, filename)
-        shutil.move(source_path, destination_path)
-        print(f'User uploaded file "{filename}" moved to "{destination_path}"')
-        if filename.endswith('.zip'):
-            uploaded_zip_files.append(destination_path)
-
-    # 3. Unzip all uploaded .zip files
-    if uploaded_zip_files:
-        for zip_file_path in uploaded_zip_files:
-            print(f"\nUnzipping {zip_file_path}...")
-            try:
-                # Use subprocess.run for robust command execution
-                unzip_cmd = ["unzip", "-o", zip_file_path, "-d", target_upload_dir]
-                print(f"Executing: {' '.join([shlex.quote(arg) for arg in unzip_cmd])}")
-                subprocess.run(unzip_cmd, check=True, capture_output=True, text=True)
-
-                # Remove the zip file after unzipping
-                os.remove(zip_file_path)
-                print(f"✅ {zip_file_path} unzipped and removed.")
-            except subprocess.CalledProcessError as e:
-                print(f"❌ Error unzipping {zip_file_path}: {e.stderr.strip()}")
-            except FileNotFoundError:
-                print(f"❌ Error: The zip file '{zip_file_path}' was not found during unzipping.")
-            except Exception as e:
-                print(f"❌ An unexpected error occurred during unzipping {zip_file_path}: {e}")
-    else:
-        print("\nNo .zip files found to unzip in the target directory.")
-
-    # 4. Create the verifier and run the verification
+    # إنشاء المدقق
     verifier = GmailVerifier()
+
+    # فحص جميع الملفات
     if verifier.verify_files():
+        # النتائج النهائية
         verifier.show_final_stats()
         verifier.generate_report()
 
-    # 5. Zip the result files
-    base_path_for_zip = 'orgenal folder' # Use relative path as it worked previously
-    live_file = os.path.join(base_path_for_zip, 'live', '12345Noah Brookslive_accounts.txt')
-    new_disabled_file = os.path.join(base_path_for_zip, 'new_disabled', 'new_disabled_accounts.txt')
-    invalid_file = os.path.join(base_path_for_zip, 'invalid', '12345Noah Brooksinvalid_accounts.txt')
-
-    files_to_zip = []
-    if os.path.exists(live_file):
-        files_to_zip.append(live_file)
-    if os.path.exists(new_disabled_file):
-        files_to_zip.append(new_disabled_file)
-    if os.path.exists(invalid_file):
-        files_to_zip.append(invalid_file)
-
-    if files_to_zip:
-        # Use subprocess.run for robust zip creation
-        zip_output_filename = 'result_accounts.zip'
-        zip_cmd = ["zip", "-j", zip_output_filename] + files_to_zip
-        print(f"\nZipping files: {' '.join([shlex.quote(arg) for arg in zip_cmd])}")
-        try:
-            subprocess.run(zip_cmd, check=True, capture_output=True, text=True)
-            print(f"\n✅ All result files have been zipped into `{zip_output_filename}`")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Error zipping files: {e.stderr.strip()}")
-        except Exception as e:
-            print(f"❌ An unexpected error occurred during zipping: {e}")
-    else:
-        print("\n❌ No result files found to zip.")
-
-    # 6. Download the zipped file
-    file_to_download = '/content/result_accounts.zip'
-
-    if os.path.exists(file_to_download):
-        print(f"\nDownloading {file_to_download}...")
-        files.download(file_to_download)
-        print(f"✅ {file_to_download} downloaded successfully!")
-    else:
-        print(f"❌ Error: {file_to_download} not found for download.")
-
     print("\n" + "="*80)
-    print("✅ Workflow Completed")
+    print("✅ تم الانتهاء")
     print("="*80)
 
 if __name__ == "__main__":
-    main_workflow()
+    main()
