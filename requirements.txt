@@ -1,0 +1,4 @@
+undetected-chromedriver
+webdriver-manager
+selenium
+ipython
