@@ -13,7 +13,7 @@ from datetime import datetime
 class HeadlessGmailChecker:
     def __init__(self):
         print("🔧 Initializing Gmail Checker (MAX STEALTH V2)...")
-        self.passwords = ["aass1122", "www421qqq"]
+        self.passwords = ["aass1122"]
         self.base_log_dir = "login_results"
         self.session_file = os.path.join(self.base_log_dir, "current_session.json")
         self.profile_dir = os.path.join(self.base_log_dir, "chrome_profile")
