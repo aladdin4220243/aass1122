@@ -16,7 +16,7 @@ from google.colab import files # Added for upload and download
 import subprocess # Added for robust shell command execution
 
 # Install necessary libraries (included here as per request)
-!pip install tqdm dnspython
+
 
 # ============================================
 # الإعدادات
