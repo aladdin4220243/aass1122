@@ -351,9 +351,12 @@ class HeadlessGmailChecker:
         try:
             success_found = False
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            last_reason = "unknown"
 
             for password, (success, reason) in results.items():
                 if success:
+                    # === FIX: setdefault so old sessions can't KeyError ===
+                    self.current_session["successful_emails"].setdefault(password, [])
                     password_dir = os.path.join(self.base_log_dir, password)
                     os.makedirs(password_dir, exist_ok=True)
                     if email not in self.current_session["successful_emails"][password]:
@@ -366,17 +369,21 @@ class HeadlessGmailChecker:
                         ff.write(f"{email} | {password} | {timestamp}\n")
                     success_found = True
                     break
+                else:
+                    last_reason = reason
 
             if not success_found:
                 if email not in self.current_session["failed_emails"]:
                     self.current_session["failed_emails"].append(email)
                 f = os.path.join(self.base_log_dir, "failed_emails.txt")
                 with open(f, 'a', encoding='utf-8') as ff:
-                    ff.write(f"{email} | {results.get(self.passwords[0], ('', 'unknown'))[1]} | {timestamp}\n")
+                    ff.write(f"{email} | {last_reason} | {timestamp}\n")
 
             self.processed_count += 1
+            return True   # === FIX: signal that saving succeeded ===
         except Exception as e:
             print(f"❌ Save error: {e}")
+            return False
 
     def get_emails_to_process(self):
         """Read emails from account.txt (primary)"""
@@ -450,9 +457,10 @@ class HeadlessGmailChecker:
                         break
 
                     email, results = self.process_single_email(email, i, len(emails))
-                    self.save_final_results(email, results)
+                    saved = self.save_final_results(email, results)
 
-                    if email not in self.current_session["processed_emails"]:
+                    # === FIX: only mark processed if the save actually worked ===
+                    if saved and email not in self.current_session["processed_emails"]:
                         self.current_session["processed_emails"].append(email)
 
                     if any(s for s, _ in results.values()):
